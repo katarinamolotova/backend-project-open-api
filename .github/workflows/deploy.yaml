@@ -1,0 +1,42 @@
+name: Deploy Docs
+
+# Ручной запуск с указанием ветки
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy'
+        required: true
+        default: 'master'
+
+# ${{ github.event.inputs.branch }} to use var for github
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # Клонирует код из репозитория
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ gitverse.event.inputs.branch }}
+
+      # Устанавливает зависимости
+      - name: Install dependencies
+        run: npm install
+
+      # Собирает проект (проверить надо ли)
+      - name: Build project
+        run: npm run build
+
+      - name: Copy files to server
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          VPS_IP_ADDRESS: ${{ secrets.VPS_IP_ADDRESS }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh -o StrictHostKeyChecking=no $VPS_USER@$VPS_IP_ADDRESS "mkdir -p /var/www/myapp"
+          scp -r ./* $VPS_USER@$VPS_IP_ADDRESS:/var/www/myapp
+          ssh $VPS_USER@$VPS_IP_ADDRESS "cd /var/www/myapp && npm install && pm2 start index.js"
