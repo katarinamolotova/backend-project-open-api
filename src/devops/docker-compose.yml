@@ -1,0 +1,65 @@
+version: '3.9'
+services:
+  service-db:
+    image: postgres
+    container_name: S21DataBase
+    env_file:
+      - "./env/config_db.env"
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U root -d backendProject" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  service-flyway:
+    image: flyway/flyway
+    container_name: S21FlyWay
+    command: -configFiles=/flyway/conf/flyway.config -locations=filesystem:/flyway/sql -connectRetries=60 migrate
+    volumes:
+      - ./flyway_config:/flyway/conf/
+      - ./flyway_migration:/flyway/sql
+    depends_on:
+      service-db:
+        condition: service_healthy
+
+  service-nginx:
+    image: nginx:latest
+    container_name: S21Nginx
+    restart: always
+    depends_on:
+      service-backend:
+        condition: service_started
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx:/etc/nginx/conf.d
+
+  service-pgadmin:
+    image: dpage/pgadmin4
+    container_name: S21PGadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: root@root.com
+      PGADMIN_DEFAULT_PASSWORD: root
+    volumes:
+      - ./../dist/pgadmin:/var/lib/pgadmin
+    restart: always
+
+#  Для локального запуска бэка закомментировать
+  service-backend:
+    image: backend_project
+    deploy:
+      replicas: 3
+    build:
+      context: ./../backend/
+      dockerfile: Dockerfile
+    depends_on:
+      service-flyway:
+        condition: service_completed_successfully
+    env_file:
+      - "./env/config_backend.env"
+    restart: unless-stopped
